@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<!-- salesforce Bean for the Salesforce Connection -->
+<bean id="salesforce" class="org.apache.camel.component.salesforce.SalesforceComponent">
+	<property name="loginConfig">
+		<bean class="org.apache.camel.component.salesforce.SalesforceLoginConfig">
+			<property name="loginUrl" value="https://login.salesforce.com"></property>
+			<property name="clientId" value="3MVG98_Psg5cppyafzqD9qw_T8B1zqKhIowUP4HmJ75eBeNan9Fa2.iWIs_nl0LgkV8cCuVPl1Cy5se_BHAHl"/>
+		 	<property name="clientSecret" value="7458506515300263649"/>
+		 	<property name="userName" value="patrick.gabor@esentri.com"/>
+		 	<property name="password" value="esentri2016vZruf6gxwdkhdzumeSF2MNNE"/>
+		</bean>
+	</property>
+</bean>
+
+<!-- spring transaction manager -->
+<bean id="txManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+    <property name="dataSource" ref="dataSource"/>
+</bean>
+
+<!-- datasource Bean for the Oracle Database -->
+<bean id="dataSource" class="org.springframework.jdbc.datasource.SimpleDriverDataSource">
+	<property name="driverClass" value="oracle.jdbc.OracleDriver"/>
+	<property name="url" value="jdbc:oracle:thin:LI_PATRICK/54buzEphaMuk@dev-internaldb.esentri.com:1521:devdb"/>
+	<property name="username" value="LI_PATRICK"/>
+	<property name="password" value="54buzEphaMuk"/>
+</bean> 
+
+<!-- DataMappingBean Bean for data transformation -->
+<bean id="DataMappingBean" class="com.esentri.salesforcedemo.fuse.salesforcedemo.DataMappingBean" />
+
+<!-- Data mapping Beans for data transformation -->
+<bean id="AccountBean" class="com.esentri.salesforcedemo.fuse.salesforcedemo.AccountBean" />
+<bean id="ContactBean" class="com.esentri.salesforcedemo.fuse.salesforcedemo.ContactBean" />
+<bean id="OpportunityBean" class="com.esentri.salesforcedemo.fuse.salesforcedemo.OpportunityBean" />
+
+  <camelContext trace="true" id="blueprintContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route autoStartup="false" startupOrder="1" id="Account_Data">
+    <from uri="timer:startAD?repeatCount=1"/>
+    <setExchangePattern pattern="InOut"/>
+    <multicast parallelProcessing="true">
+      <doTry>
+        <to uri="salesforce:query?sObjectQuery=SELECT Id, Name, Type, LastModifiedDate FROM Account WHERE Id IN (SELECT AccountID FROM Opportunity WHERE Probability = 100)&amp;sObjectClass=org.apache.camel.salesforce.dto.QueryRecordsAccount"/>
+        <convertBodyTo type="java.lang.String"/>
+        <bean ref="AccountBean" method="setArrayList_salesforce"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT MAX(ID) FROM ORGANISATION</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="AccountBean" method="setAccountids"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT ID, NAME, UPDATED_ON FROM ORGANISATION</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="AccountBean" method="setArrayList_oracle"/>
+        <to uri="controlbus:route?routeId=Account_Mapping&amp;action=start"/>
+      </doTry>
+    </multicast>
+  </route>
+  <route autoStartup="false" startupOrder="2" id="Account_Mapping">
+    <from uri="timer:startAM?repeatCount=1"/>
+    <bean ref="AccountBean" method="dataSplit"/>
+    <bean ref="AccountBean" method="insertDatabase"/>
+    <choice>
+      <when>
+        <simple>${body} == "INSERT ALL SELECT * FROM dual"</simple>
+        <bean ref="AccountBean" method="getArrayList_update()"/>
+        <setHeader headerName="_loop1">
+          <simple>${body}</simple>
+        </setHeader>
+        <choice>
+          <when>
+            <simple>${header._loop1.size} != 0</simple>
+            <loop id="_loop1">
+              <simple>${header._loop1.size}</simple>
+              <setBody id="_setBody2">
+                <simple>UPDATE Organisation SET NAME='${header._loop1.get(${property.CamelLoopIndex}).get("Name")}', ORGANISATION_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Type")}', IST_AKTIV='T', UPDATED_ON=TO_DATE('${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss') WHERE ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
+              </setBody>
+              <to uri="jdbc:dataSource" id="_to2"/>
+            </loop>
+            <to uri="controlbus:route?routeId=Contact_Data&amp;action=start"/>
+          </when>
+          <otherwise>
+            <to uri="controlbus:route?routeId=Contact_Data&amp;action=start"/>
+          </otherwise>
+        </choice>
+      </when>
+      <otherwise>
+        <setBody>
+          <simple>${body}</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="AccountBean" method="getArrayList_update()"/>
+        <setHeader headerName="_loop2">
+          <simple>${body}</simple>
+        </setHeader>
+        <choice>
+          <when>
+            <simple>${header._loop2.size} != 0</simple>
+            <loop id="_loop2">
+              <simple>${header._loop2.size}</simple>
+              <setBody>
+                <simple>UPDATE Organisation SET NAME='${header._loop1.get(${property.CamelLoopIndex}).get("Name")}', ORGANISATION_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Type")}', IST_AKTIV='T', UPDATED_ON=TO_DATE('${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss') WHERE ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
+              </setBody>
+              <to uri="jdbc:dataSource"/>
+            </loop>
+            <to uri="controlbus:route?routeId=Contact_Data&amp;action=start"/>
+          </when>
+          <otherwise>
+            <to uri="controlbus:route?routeId=Contact_Data&amp;action=start"/>
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+  </route>
+  <route autoStartup="false" startupOrder="3" id="Contact_Data">
+    <from uri="timer:startCD?repeatCount=1"/>
+    <multicast>
+      <doTry>
+        <to uri="salesforce:query?sObjectQuery=SELECT Id, FirstName, LastName, Salutation, AccountId, Person_Typ__c, LastModifiedDate FROM Contact WHERE AccountId IN (SELECT AccountId FROM Opportunity WHERE Probability = 100)&amp;sObjectClass=org.apache.camel.salesforce.dto.QueryRecordsContact"/>
+        <convertBodyTo type="java.lang.String"/>
+        <bean ref="ContactBean" method="setArrayList_salesforce"/>
+      </doTry>
+      <doTry>
+        <to uri="salesforce:query?sObjectQuery=SELECT Id, Name FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Probability = 100)&amp;sObjectClass=org.apache.camel.salesforce.dto.QueryRecordsAccount"/>
+        <convertBodyTo type="java.lang.String"/>
+        <bean ref="ContactBean" method="setArrayList_salesforce_accounts"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT MAX(ID) FROM PERSON</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="ContactBean" method="setContactids"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT ID, VORNAME, NACHNAME, UPDATED_ON FROM PERSON</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="ContactBean" method="setArrayList_oracle"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT ID, NAME FROM ORGANISATION</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="ContactBean" method="setArrayList_oracle_accounts"/>
+        <to uri="controlbus:route?routeId=Contact_Mapping&amp;action=start"/>
+      </doTry>
+    </multicast>
+  </route>
+  <route autoStartup="false" startupOrder="4" id="Contact_Mapping">
+    <from uri="timer:startCM?repeatCount=1"/>
+    <bean ref="ContactBean" method="dataSplit"/>
+    <bean ref="ContactBean" method="getArrayList_insert()"/>
+    <bean ref="ContactBean" method="insertDatabase"/>
+    <choice>
+      <when>
+        <simple>${body} == "INSERT ALL SELECT * FROM dual"</simple>
+        <bean ref="ContactBean" method="getArrayList_update"/>
+        <setHeader headerName="_loop1">
+          <simple>${body}</simple>
+        </setHeader>
+        <choice>
+          <when>
+            <simple>${header._loop1.size} != 0</simple>
+            <loop>
+              <simple>${header._loop1.size}</simple>
+              <setBody>
+                <simple>UPDATE PERSON SET PERSON_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Person_Typ__c")}', ORGANISATION_ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, IST_AKTIV='T', VORNAME='${header._loop1.get(${property.CamelLoopIndex}).get("FirstName")}', NACHNAME='${header._loop1.get(${property.CamelLoopIndex}).get("LastName")}', ANSPRACHE='${header._loop1.get(${property.CamelLoopIndex}).get("Salutation")}', UPDATED_ON=TO_DATE('${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss') WHERE ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
+              </setBody>
+              <to uri="jdbc:dataSource"/>
+            </loop>
+            <to uri="controlbus:route?routeId=Opportunity_Data&amp;action=start"/>
+          </when>
+          <otherwise>
+            <to uri="controlbus:route?routeId=Opportunity_Data&amp;action=start"/>
+          </otherwise>
+        </choice>
+      </when>
+      <otherwise>
+        <setBody>
+          <simple>${body}</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="ContactBean" method="getArrayList_update"/>
+        <setHeader headerName="_loop2">
+          <simple>${body}</simple>
+        </setHeader>
+        <choice>
+          <when>
+            <simple>${header._loop2.size} != 0</simple>
+            <loop>
+              <simple>${header._loop2.size}</simple>
+              <setBody>
+                <simple>UPDATE PERSON SET PERSON_TYP_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Person_Typ__c")}', ORGANISATION_ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, IST_AKTIV='T', VORNAME='${header._loop2.get(${property.CamelLoopIndex}).get("FirstName")}', NACHNAME='${header._loop2.get(${property.CamelLoopIndex}).get("LastName")}', ANSPRACHE='${header._loop2.get(${property.CamelLoopIndex}).get("Salutation")}', UPDATED_ON=TO_DATE('${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss') WHERE ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
+              </setBody>
+              <to uri="jdbc:dataSource"/>
+            </loop>
+            <to uri="controlbus:route?routeId=Opportunity_Data&amp;action=start"/>
+          </when>
+          <otherwise>
+            <to uri="controlbus:route?routeId=Opportunity_Data&amp;action=start"/>
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+  </route>
+  <route autoStartup="true" startupOrder="5" id="Opportunity_Data">
+    <from uri="timer:startCD?repeatCount=1"/>
+    <multicast>
+      <doTry>
+        <to uri="salesforce:query?sObjectQuery=SELECT Id, AccountId, Amount, Name, Abrechnungsart__c, Angebotsnummer__c, Ansprechpartner_Kunde__c, Land__c, Beauftragungsart__c, Branche__c, Technologie__c, CreatedById, CreatedDate, LastModifiedById, LastModifiedDate FROM Opportunity WHERE Probability = 100&amp;sObjectClass=org.apache.camel.salesforce.dto.QueryRecordsOpportunity"/>
+        <convertBodyTo type="java.lang.String"/>
+        <bean ref="OpportunityBean" method="setArrayList_salesforce"/>
+        <log message="${body}"/>
+      </doTry>
+      <doTry>
+        <to uri="salesforce:query?sObjectQuery=SELECT Id, FirstName, LastName, Salutation, AccountId, Person_Typ__c, LastModifiedDate FROM Contact WHERE AccountId IN (SELECT AccountId FROM Opportunity WHERE Probability = 100)&amp;sObjectClass=org.apache.camel.salesforce.dto.QueryRecordsContact"/>
+        <convertBodyTo type="java.lang.String"/>
+        <bean ref="OpportunityBean" method="setArrayList_salesforce_contacts"/>
+      </doTry>
+      <doTry>
+        <to uri="salesforce:query?sObjectQuery=SELECT Id, Name FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Probability = 100)&amp;sObjectClass=org.apache.camel.salesforce.dto.QueryRecordsAccount"/>
+        <convertBodyTo type="java.lang.String"/>
+        <bean ref="OpportunityBean" method="setArrayList_salesforce_accounts"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT MAX(ID) FROM PROJEKT</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="OpportunityBean" method="setContactids"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT ID, NAME, SF_AKTUALISIERT_AM FROM PROJEKT</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="OpportunityBean" method="setArrayList_oracle"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT ID, VORNAME, NACHNAME, UPDATED_ON FROM PERSON</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="OpportunityBean" method="setArrayList_oracle_contacts"/>
+      </doTry>
+      <doTry>
+        <setBody>
+          <simple>SELECT ID, NAME FROM ORGANISATION</simple>
+        </setBody>
+        <to uri="jdbc:dataSource"/>
+        <bean ref="OpportunityBean" method="setArrayList_oracle_accounts"/>
+        <to uri="controlbus:route?routeId=Opportunity_Mapping&amp;action=start"/>
+      </doTry>
+    </multicast>
+  </route>
+  <route autoStartup="false" startupOrder="6" id="Opportunity_Mapping">
+    <from uri="timer:startOM?repeatCount=1"/>
+    <bean ref="OpportunityBean" method="dataSplit"/>
+    <bean ref="OpportunityBean" method="insertDatabase" cache="false"/>
+    <choice>
+      <when>
+        <simple></simple>
+        <bean ref="OpportunityBean" method="getArrayList_update"/>
+        <setHeader headerName="_loop1">
+          <simple>${body}</simple>
+        </setHeader>
+        <choice>
+          <when>
+            <simple>${header._loop1.size} != 0</simple>
+            <loop>
+              <simple>${header._loop1.size}</simple>
+              <setBody>
+                <simple>UPDATE PROJEKT SET PROJEKT_ART_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Abrechnungsart__c")}', ENDKUNDE_ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGGEBER_ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGNEHMER_ID=${header._loop1.get(${property.CamelLoopIndex}).get("Auftragnehmer_Id")}, VERTRIEBS_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Beauftragungsart__c")}', BRANCHE_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Branche__c")}', TECHSTACK_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Technologie__c")}', NAME='${header._loop1.get(${property.CamelLoopIndex}).get("Name")}', PROJEKTKUERZEL='${header._loop1.get(${property.CamelLoopIndex}).get("Projektkuerzel")}', AUFTRAGSWERT=${header._loop1.get(${property.CamelLoopIndex}).get("Amount")}, KUNDENANSPRECHPERSON_ID='${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Contact_Id")}', ANGEBOTSNUMMER='${header._loop1.get(${property.CamelLoopIndex}).get("Angebotsnummer__c")}', SF_AKTUALISIERT_AM=TO_DATE('${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss'), SF_AKTUALISIERT_VON='${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedById")}' WHERE ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
+              </setBody>
+            </loop>
+          </when>
+          <otherwise/>
+        </choice>
+      </when>
+      <otherwise>
+        <setBody>
+          <simple></simple>
+        </setBody>
+        <bean ref="OpportunityBean" method="getArrayList_update"/>
+        <setHeader headerName="_loop2">
+          <simple>${body}</simple>
+        </setHeader>
+        <choice>
+          <when>
+            <simple>${header._loop2.size} != 0</simple>
+            <loop>
+              <simple>${header._loop2.size}</simple>
+              <setBody>
+                <simple>UPDATE PROJEKT SET PROJEKT_ART_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Abrechnungsart__c")}', ENDKUNDE_ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGGEBER_ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGNEHMER_ID=${header._loop2.get(${property.CamelLoopIndex}).get("Auftragnehmer_Id")}, VERTRIEBS_TYP_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Beauftragungsart__c")}', BRANCHE_TYP_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Branche__c")}', TECHSTACK_TYP_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Technologie__c")}', NAME='${header._loop2.get(${property.CamelLoopIndex}).get("Name")}', PROJEKTKUERZEL='${header._loop2.get(${property.CamelLoopIndex}).get("Projektkuerzel")}', AUFTRAGSWERT=${header._loop2.get(${property.CamelLoopIndex}).get("Amount")}, KUNDENANSPRECHPERSON_ID='${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Contact_Id")}', ANGEBOTSNUMMER='${header._loop2.get(${property.CamelLoopIndex}).get("Angebotsnummer__c")}', SF_AKTUALISIERT_AM=TO_DATE('${header._loop2.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss'), SF_AKTUALISIERT_VON='${header._loop2.get(${property.CamelLoopIndex}).get("LastModifiedById")}' WHERE ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
+              </setBody>
+            </loop>
+          </when>
+          <otherwise/>
+        </choice>
+      </otherwise>
+    </choice>
+  </route>
+</camelContext>
+</blueprint>
