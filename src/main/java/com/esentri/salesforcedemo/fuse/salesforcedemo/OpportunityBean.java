@@ -129,47 +129,43 @@ public class OpportunityBean {
 	    int i1 = 0;
 	    int i2 = 0;
 	    
+	    //Method to add Oracle IDs to Salesforce Opportunity data
 	    addOracleId();
-	    addOracleContactId();
+	    //Methode to transform long value to Date 
 	    datetransformation_salesforce();
+	    //Method to transform Oracle date format to equal the salesforce date format
 	    datetransformation_oracle();
+	    //Method to transform certain  Salesforce data into the expected Oracle format
 	    transformOpportunityData();
 	    
 	    //Iteration loop to spereate the saelsfroce data
-		for (Iterator<HashMap<Object, Object>> iterator1 = arrayList_insert.iterator(); iterator1.hasNext();) {
+		for (Iterator<HashMap<Object, Object>> iterator1 = arrayList_insert.iterator(); 
+				iterator1.hasNext();) {
 		    //Initializing salesforce data iterator
 			HashMap<Object, Object> sf = iterator1.next();		  
-			//IF statement to find matching records
 			
-			//Iteration loop to compare the saelsforce data with the oracle data
-			for (Iterator<HashMap<Object, Object>> iterator3 = arrayList_oracle.iterator(); iterator3.hasNext();) {
+			//Iteration loop to compare the Salesforce data with the Oracle data
+			for (Iterator<HashMap<Object, Object>> iterator2 = arrayList_oracle.iterator(); 
+					iterator2.hasNext();) {
 				//Initializing oracle data iterator
-				HashMap<Object, Object> or = iterator3.next();
-				//IF statement to find matching records
+				HashMap<Object, Object> or = iterator2.next();
+				//If statement to find matching records
 			    if(sf.get("Name").equals(or.get("NAME"))) {
 		    		//Remove record from HashMap
 			    	iterator1.remove();
 			    	//Add record to update list
 			    	if(!sf.get("LastModifiedDate").equals(or.get("SF_AKTUALISIERT_AM"))){
 			    		arrayList_update.add(arrayList_salesforce.get(i1));
-			    		//Get ID attribute from Oracle HashMap and add it to the matching Salesforce record
+			    		//Get ID attribute from Oracle HashMap and add to Salesforce record
 			    		arrayList_update.get(i2).put("Oracle_Id", or.get("ID"));
+			    		//Increase Integer variable by 1
+				    	i2 += 1;
 			    	}
-		    		//Increase Integer variable by 1
-		    		i2 += 1;
 		    	}
 			}
     		//Increase Integer variable by 1
 			i1 += 1;
 		}
-		//Mark for delete
-		System.out.println(arrayList_insert);
-		System.out.println(arrayList_update);
-	}
-	
-	//Adding the Oracle Contact Ids
-	private void addOracleContactId(){
-		
 	}
 	
 	//INSERT INTO String method

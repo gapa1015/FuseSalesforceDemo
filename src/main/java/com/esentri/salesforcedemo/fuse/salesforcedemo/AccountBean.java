@@ -83,9 +83,9 @@ public class AccountBean {
 			    		arrayList_update.get(i2).put("Oracle_Id", or.get("ID"));
 			    		//Transform Salesforce Type attribute to all upper case (necessary for oracle constraints)
 			    		arrayList_update.get(i2).replace("Type", arrayList_update.get(i2).get("Type").toString().toUpperCase());
+			    		//Increase Integer variable by 1
+			    		i2 += 1;
 			    	}
-		    		//Increase Integer variable by 1
-		    		i2 += 1;
 		    	}
 			}
     		//Increase Integer variable by 1

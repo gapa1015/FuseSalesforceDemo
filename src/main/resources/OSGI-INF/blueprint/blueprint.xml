@@ -13,7 +13,7 @@
 			<property name="clientId" value="3MVG98_Psg5cppyafzqD9qw_T8B1zqKhIowUP4HmJ75eBeNan9Fa2.iWIs_nl0LgkV8cCuVPl1Cy5se_BHAHl"/>
 		 	<property name="clientSecret" value="7458506515300263649"/>
 		 	<property name="userName" value="patrick.gabor@esentri.com"/>
-		 	<property name="password" value="esentri2016vZruf6gxwdkhdzumeSF2MNNE"/>
+		 	<property name="password" value="esentri2016aWQGuXyftrkHWhyrnkS2yTsiT"/>
 		</bean>
 	</property>
 </bean>
@@ -40,7 +40,7 @@
 <bean id="OpportunityBean" class="com.esentri.salesforcedemo.fuse.salesforcedemo.OpportunityBean" />
 
   <camelContext trace="true" id="blueprintContext" xmlns="http://camel.apache.org/schema/blueprint">
-  <route autoStartup="false" startupOrder="1" id="Account_Data">
+  <route autoStartup="true" startupOrder="1" id="Account_Data">
     <from uri="timer:startAD?repeatCount=1"/>
     <setExchangePattern pattern="InOut"/>
     <multicast parallelProcessing="true">
@@ -216,7 +216,7 @@
       </otherwise>
     </choice>
   </route>
-  <route autoStartup="true" startupOrder="5" id="Opportunity_Data">
+  <route autoStartup="false" startupOrder="5" id="Opportunity_Data">
     <from uri="timer:startCD?repeatCount=1"/>
     <multicast>
       <doTry>
@@ -272,7 +272,7 @@
     <bean ref="OpportunityBean" method="insertDatabase" cache="false"/>
     <choice>
       <when>
-        <simple></simple>
+        <simple>${body} == "INSERT ALL SELECT * FROM dual"</simple>
         <bean ref="OpportunityBean" method="getArrayList_update"/>
         <setHeader headerName="_loop1">
           <simple>${body}</simple>
@@ -285,6 +285,7 @@
               <setBody>
                 <simple>UPDATE PROJEKT SET PROJEKT_ART_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Abrechnungsart__c")}', ENDKUNDE_ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGGEBER_ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGNEHMER_ID=${header._loop1.get(${property.CamelLoopIndex}).get("Auftragnehmer_Id")}, VERTRIEBS_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Beauftragungsart__c")}', BRANCHE_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Branche__c")}', TECHSTACK_TYP_CODE='${header._loop1.get(${property.CamelLoopIndex}).get("Technologie__c")}', NAME='${header._loop1.get(${property.CamelLoopIndex}).get("Name")}', PROJEKTKUERZEL='${header._loop1.get(${property.CamelLoopIndex}).get("Projektkuerzel")}', AUFTRAGSWERT=${header._loop1.get(${property.CamelLoopIndex}).get("Amount")}, KUNDENANSPRECHPERSON_ID='${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Contact_Id")}', ANGEBOTSNUMMER='${header._loop1.get(${property.CamelLoopIndex}).get("Angebotsnummer__c")}', SF_AKTUALISIERT_AM=TO_DATE('${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss'), SF_AKTUALISIERT_VON='${header._loop1.get(${property.CamelLoopIndex}).get("LastModifiedById")}' WHERE ID=${header._loop1.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
               </setBody>
+              <to uri="jdbc:dataSource"/>
             </loop>
           </when>
           <otherwise/>
@@ -292,8 +293,9 @@
       </when>
       <otherwise>
         <setBody>
-          <simple></simple>
+          <simple>${body}</simple>
         </setBody>
+        <to uri="jdbc:dataSource"/>
         <bean ref="OpportunityBean" method="getArrayList_update"/>
         <setHeader headerName="_loop2">
           <simple>${body}</simple>
@@ -306,6 +308,7 @@
               <setBody>
                 <simple>UPDATE PROJEKT SET PROJEKT_ART_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Abrechnungsart__c")}', ENDKUNDE_ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGGEBER_ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Account_Id")}, AUFTRAGNEHMER_ID=${header._loop2.get(${property.CamelLoopIndex}).get("Auftragnehmer_Id")}, VERTRIEBS_TYP_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Beauftragungsart__c")}', BRANCHE_TYP_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Branche__c")}', TECHSTACK_TYP_CODE='${header._loop2.get(${property.CamelLoopIndex}).get("Technologie__c")}', NAME='${header._loop2.get(${property.CamelLoopIndex}).get("Name")}', PROJEKTKUERZEL='${header._loop2.get(${property.CamelLoopIndex}).get("Projektkuerzel")}', AUFTRAGSWERT=${header._loop2.get(${property.CamelLoopIndex}).get("Amount")}, KUNDENANSPRECHPERSON_ID='${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Contact_Id")}', ANGEBOTSNUMMER='${header._loop2.get(${property.CamelLoopIndex}).get("Angebotsnummer__c")}', SF_AKTUALISIERT_AM=TO_DATE('${header._loop2.get(${property.CamelLoopIndex}).get("LastModifiedDate")}', 'YYYY-MM-dd hh:mi:ss'), SF_AKTUALISIERT_VON='${header._loop2.get(${property.CamelLoopIndex}).get("LastModifiedById")}' WHERE ID=${header._loop2.get(${property.CamelLoopIndex}).get("Oracle_Id")}</simple>
               </setBody>
+              <to uri="jdbc:dataSource"/>
             </loop>
           </when>
           <otherwise/>
